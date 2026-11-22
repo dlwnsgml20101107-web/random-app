@@ -1,4 +1,4 @@
-mport streamlit as st
+import streamlit as st
 
 # ==========================================
 # 1. 기본 설정

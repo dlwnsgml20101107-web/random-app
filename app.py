@@ -1,622 +1,311 @@
+
 import streamlit as st
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.ticker import FuncFormatter, NullFormatter
 
-
-# ------------------------------------------------------------
-# 1. 화면 설정 및 디자인
-# ------------------------------------------------------------
+# ----------------------------------
+# 1. 프로그램 기본 설정
+# ----------------------------------
 
 st.set_page_config(
-    page_title="RC Filter Analyzer",
+    page_title="저항 색상 띠 계산기",
     page_icon="🔌",
-    layout="wide"
+    layout="centered"
 )
 
-st.markdown("""
-<style>
-.block-container {
-    max-width: 1200px;
-    padding-top: 1.5rem;
-    padding-bottom: 2rem;
-    padding-left: 3rem;
-    padding-right: 3rem;
-}
-h1 {
-    font-size: 1.65rem !important;
-    font-weight: 700 !important;
-    margin-bottom: 0.3rem !important;
-}
-h2 {
-    font-size: 1.25rem !important;
-    font-weight: 650 !important;
-}
-h3 {
-    font-size: 1.05rem !important;
-}
-p, label, .stMarkdown {
-    font-size: 0.88rem;
-}
-.stCaption {
-    font-size: 0.75rem;
-}
-[data-testid="stMetric"] {
-    background-color: rgba(128, 128, 128, 0.07);
-    padding: 12px 15px;
-    border-radius: 10px;
-    border: 1px solid rgba(128, 128, 128, 0.15);
-}
-[data-testid="stMetricLabel"] {
-    font-size: 0.78rem !important;
-}
-[data-testid="stMetricValue"] {
-    font-size: 1.35rem !important;
-    font-weight: 650;
-}
-.stNumberInput, .stSelectbox {
-    margin-bottom: 0.35rem;
-}
-.stButton button,
-.stDownloadButton button {
-    border-radius: 8px;
-    font-size: 0.85rem;
-}
-hr {
-    margin-top: 1rem;
-    margin-bottom: 1rem;
-}
-[data-testid="stSidebar"] {
-    min-width: 270px;
-}
-</style>
-""", unsafe_allow_html=True)
+st.title("🔌 저항 색상 띠 계산기")
+st.write("저항의 색상 띠를 선택하면 저항값을 자동으로 계산합니다.")
 
+# ----------------------------------
+# 2. 색상별 데이터 저장
+# ----------------------------------
 
-# ------------------------------------------------------------
-# 2. 회로 계산 함수
-# ------------------------------------------------------------
+color_data = {
+    "검정색": {"digit": 0, "multiplier": 1, "hex": "#202020"},
+    "갈색": {"digit": 1, "multiplier": 10, "hex": "#8B4513"},
+    "빨간색": {"digit": 2, "multiplier": 100, "hex": "#E53935"},
+    "주황색": {"digit": 3, "multiplier": 1000, "hex": "#EF6C00"},
+    "노란색": {"digit": 4, "multiplier": 10000, "hex": "#FDD835"},
+    "초록색": {"digit": 5, "multiplier": 100000, "hex": "#388E3C"},
+    "파란색": {"digit": 6, "multiplier": 1000000, "hex": "#1976D2"},
+    "보라색": {"digit": 7, "multiplier": 10000000, "hex": "#7B1FA2"},
+    "회색": {"digit": 8, "multiplier": 100000000, "hex": "#9E9E9E"},
+    "흰색": {"digit": 9, "multiplier": 1000000000, "hex": "#FFFFFF"},
+    "금색": {"multiplier": 0.1, "hex": "#D4AF37"},
+    "은색": {"multiplier": 0.01, "hex": "#C0C0C0"}
+}
 
-def cutoff_frequency(resistance_ohm, capacitance_f):
-    """저항과 커패시터 값으로 1차 RC 필터의 차단 주파수를 계산한다."""
-    if resistance_ohm <= 0 or capacitance_f <= 0:
-        raise ValueError("저항과 커패시터 값은 0보다 커야 합니다.")
+# 허용 오차 (%)
+tolerance_data = {
+    "갈색": 1,
+    "빨간색": 2,
+    "초록색": 0.5,
+    "파란색": 0.25,
+    "보라색": 0.1,
+    "회색": 0.05,
+    "금색": 5,
+    "은색": 10,
+    "없음": 20
+}
 
-    return 1.0 / (2.0 * np.pi * resistance_ohm * capacitance_f)
+# 온도 계수 (ppm/℃)
+temperature_data = {
+    "검정색": 250,
+    "갈색": 100,
+    "빨간색": 50,
+    "주황색": 15,
+    "노란색": 25,
+    "초록색": 20,
+    "파란색": 10,
+    "보라색": 5,
+    "회색": 1
+}
 
+# ----------------------------------
+# 3. 저항값 표시 함수
+# ----------------------------------
 
-def calculate_response(
-    filter_type,
-    frequencies_hz,
-    resistance_ohm,
-    capacitance_f
-):
-    """
-    주파수별 전압 이득, 이득(dB), 위상차를 계산한다.
-    저역통과와 고역통과 1차 RC 필터만 지원한다.
-    """
-    frequencies = np.asarray(frequencies_hz, dtype=float)
+def format_resistance(value):
 
-    if resistance_ohm <= 0 or capacitance_f <= 0:
-        raise ValueError("저항과 커패시터 값은 0보다 커야 합니다.")
+    if value >= 1000000:
+        return f"{value / 1000000:g} MΩ"
 
-    if np.any(frequencies <= 0):
-        raise ValueError("주파수는 0보다 커야 합니다.")
-
-    x = 2.0 * np.pi * frequencies * resistance_ohm * capacitance_f
-
-    if filter_type == "저역통과":
-        gain = 1.0 / np.sqrt(1.0 + x**2)
-        phase_deg = -np.degrees(np.arctan(x))
-
-    elif filter_type == "고역통과":
-        gain = x / np.sqrt(1.0 + x**2)
-        phase_deg = np.degrees(np.arctan2(1.0, x))
+    elif value >= 1000:
+        return f"{value / 1000:g} kΩ"
 
     else:
-        raise ValueError("지원하지 않는 필터입니다.")
-
-    gain_db = 20.0 * np.log10(np.maximum(gain, 1e-15))
-
-    return gain, gain_db, phase_deg
+        return f"{value:g} Ω"
 
 
-# ------------------------------------------------------------
-# 3. 반복문과 리스트를 이용한 출력 전압 계산
-# ------------------------------------------------------------
+# ----------------------------------
+# 4. 저항 색상 띠 개수 선택
+# ----------------------------------
 
-def calculate_output_voltages(input_voltage, gains):
-    """각 주파수의 전압 이득에 입력 전압을 곱해 출력 전압 리스트를 만든다."""
-    output_voltage_list = []
+st.subheader("① 저항 종류 선택")
 
-    for i in range(len(gains)):
-        output_voltage = input_voltage * float(gains[i])
-        output_voltage_list.append(output_voltage)
-
-    return output_voltage_list
-
-
-
-# ------------------------------------------------------------
-# 4. 메인 화면
-# ------------------------------------------------------------
-
-st.title("🔌 RC 필터의 주파수별 특성 분석 및 설계 프로그램")
-st.caption("RC Filter Frequency Response Analyzer")
-
-st.write(
-    "저항과 커패시터 값을 입력하면 RC 필터의 차단 주파수, "
-    "출력 전압, 전압 이득 및 위상 변화를 분석합니다."
+band_count = st.radio(
+    "색상 띠 개수",
+    [4, 5, 6],
+    horizontal=True
 )
+
+st.caption(
+    "4색 띠: 숫자 2개 + 배율 + 허용 오차\n\n"
+    "5색 띠: 숫자 3개 + 배율 + 허용 오차\n\n"
+    "6색 띠: 숫자 3개 + 배율 + 허용 오차 + 온도 계수"
+)
+
+# ----------------------------------
+# 5. 색상 띠 입력
+# ----------------------------------
+
+st.subheader("② 색상 띠 입력")
+
+digit_count = 2 if band_count == 4 else 3
+
+digit_colors = list(color_data.keys())[:10]
+
+multiplier_colors = list(color_data.keys())
+
+tolerance_colors = list(tolerance_data.keys())
+
+temperature_colors = list(temperature_data.keys())
+
+selected_colors = []
+
+# 색상 띠의 역할 설정
+band_names = (
+    ["첫 번째 숫자", "두 번째 숫자"]
+    if band_count == 4
+    else ["첫 번째 숫자", "두 번째 숫자", "세 번째 숫자"]
+)
+
+band_names += ["배율", "허용 오차"]
+
+if band_count == 6:
+    band_names += ["온도 계수"]
+
+# 기본 색상 설정
+default_colors = {
+    4: ["갈색", "검정색", "빨간색", "금색"],
+    5: ["갈색", "검정색", "검정색", "빨간색", "갈색"],
+    6: ["갈색", "검정색", "검정색", "빨간색", "갈색", "갈색"]
+}
+
+columns = st.columns(band_count)
+
+for i in range(band_count):
+
+    with columns[i]:
+
+        st.write(f"**{i + 1}번째 띠**")
+
+        # 위치에 따라 선택 가능한 색상 제한
+        if i < digit_count:
+            options = digit_colors
+
+        elif i == digit_count:
+            options = multiplier_colors
+
+        elif i == digit_count + 1:
+            options = tolerance_colors
+
+        else:
+            options = temperature_colors
+
+        default_color = default_colors[band_count][i]
+
+        selected = st.selectbox(
+            band_names[i],
+            options,
+            index=options.index(default_color),
+            key=f"band_{band_count}_{i}"
+        )
+
+        selected_colors.append(selected)
+
+        # 선택된 색상을 화면에 표시
+        hex_color = color_data[selected]["hex"]
+
+        st.markdown(
+            f"""
+            <div style="
+                height: 45px;
+                background-color: {hex_color};
+                border: 1px solid #888;
+                border-radius: 5px;
+                margin-top: 5px;
+            "></div>
+            """,
+            unsafe_allow_html=True
+        )
+
+# ----------------------------------
+# 6. 저항값 계산
+# ----------------------------------
 
 st.divider()
+st.subheader("③ 계산 결과")
 
+# 앞쪽 색상 띠의 숫자를 하나의 정수로 결합
+digits = ""
 
-# ------------------------------------------------------------
-# 4. 프로그램 목적 및 작동 원리 설명
-# ------------------------------------------------------------
+for i in range(digit_count):
+    digits += str(color_data[selected_colors[i]]["digit"])
 
-with st.expander(
-    "📖 프로그램의 목적과 작동 원리 알아보기",
-    expanded=False
-):
-    st.markdown("""
-### ① 프로그램의 목적
+significant_value = int(digits)
 
-이 프로그램은 저항(R)과 커패시터(C)로 구성된 RC 필터의
-전기적 특성을 분석하고 설계하는 것을 목적으로 합니다.
+# 배율 계산
+multiplier = color_data[selected_colors[digit_count]]["multiplier"]
 
-사용자가 저항과 커패시터의 값을 입력하면 차단 주파수를 계산하고,
-주파수 변화에 따라 출력 전압과 전압 이득, 위상차가
-어떻게 달라지는지 그래프와 표로 확인할 수 있습니다.
+# 최종 저항값
+resistance = significant_value * multiplier
 
-### ② RC 필터의 작동 원리
+# 허용 오차 계산
+tolerance_color = selected_colors[digit_count + 1]
 
-RC 필터는 저항과 커패시터를 이용하여 입력 신호의 주파수에 따라
-출력 신호의 크기를 조절하는 회로입니다.
+tolerance = tolerance_data[tolerance_color]
 
-**저역통과 필터**
+# 허용 오차 범위
+minimum = resistance * (1 - tolerance / 100)
+maximum = resistance * (1 + tolerance / 100)
 
-낮은 주파수의 신호는 잘 통과시키고,
-높은 주파수의 신호는 약하게 만듭니다.
+# ----------------------------------
+# 7. 결과 출력
+# ----------------------------------
 
-**고역통과 필터**
-
-높은 주파수의 신호는 잘 통과시키고,
-낮은 주파수의 신호는 약하게 만듭니다.
-
-### ③ 차단 주파수의 계산 원리
-
-\\[
-f_c = \\frac{1}{2\\pi RC}
-\\]
-
-- R: 저항값(Ω)
-- C: 커패시터의 정전용량(F)
-- fc: 차단 주파수(Hz)
-
-차단 주파수에서 출력 전압의 크기는 입력 전압의 약 70.7%가 됩니다.
-
-### ④ 프로그램의 분석 과정
-
-1. 사용자가 필터 종류, 저항, 커패시터, 입력 전압을 설정합니다.
-2. 입력된 저항과 커패시터 값으로 차단 주파수를 계산합니다.
-3. 설정한 주파수 범위에서 각 주파수의 전압 이득과 위상차를 계산합니다.
-4. 전압 이득에 입력 전압을 곱하여 출력 전압을 구합니다.
-5. 계산 결과를 그래프와 표로 표시하고 CSV 파일로 저장할 수 있습니다.
-
-**활용 목적**
-
-저항과 커패시터의 변화가 필터의 특성에 어떤 영향을 주는지
-직접 확인하여 RC 회로의 주파수 응답 원리를 이해할 수 있습니다.
-""")
-
-
-# ------------------------------------------------------------
-# 4. 용어 설명
-# ------------------------------------------------------------
-
-if "show_explanation" not in st.session_state:
-    st.session_state.show_explanation = False
-
-if st.button("📘 전자 필터 용어 설명 보기 / 닫기"):
-    st.session_state.show_explanation = (
-        not st.session_state.show_explanation
-    )
-
-if st.session_state.show_explanation:
-    with st.container(border=True):
-        st.subheader("프로그램에 사용되는 기본 용어")
-
-        st.markdown("""
-**저항(R)**
-
-전류의 흐름을 제한하는 전자 부품입니다. 단위는 옴(Ω)입니다.
-
-**커패시터(C)**
-
-전기 에너지를 전기장 형태로 저장하고 방출하는 부품입니다.
-단위는 패럿(F)입니다.
-
-**주파수(Hz)**
-
-전기 신호가 1초 동안 반복되는 횟수입니다.
-
-**전자 필터**
-
-특정 주파수의 신호는 통과시키고 다른 주파수의 신호는
-약하게 만드는 회로입니다.
-
-**저역통과 필터**
-
-낮은 주파수는 잘 통과시키고 높은 주파수는 약하게 만듭니다.
-
-**고역통과 필터**
-
-높은 주파수는 잘 통과시키고 낮은 주파수는 약하게 만듭니다.
-
-**차단 주파수**
-
-출력 전압의 크기가 통과 대역 기준 입력 전압의 약 70.7%가 되는
-기준 주파수입니다.
-
-**전압 이득**
-
-출력 전압을 입력 전압으로 나눈 값입니다.
-
-**위상차**
-
-입력 신호와 출력 신호 사이의 위상 차이를 각도로 나타낸 값입니다.
-
-**차단 주파수 공식**
-
-\\[
-f_c = \\frac{1}{2\\pi RC}
-\\]
-""")
-
-
-st.info(
-    "이 프로그램은 이상적인 1차 RC 저역통과·고역통과 필터를 분석합니다."
-)
-
-
-# ------------------------------------------------------------
-# 4. 사용자 입력
-# ------------------------------------------------------------
-
-st.sidebar.header("⚙️ 회로 및 분석 조건")
-
-filter_type = st.sidebar.selectbox(
-    "필터 종류",
-    ["저역통과", "고역통과"]
-)
-
-resistance_kohm = st.sidebar.number_input(
-    "저항값 R (kΩ)",
-    min_value=0.001,
-    max_value=10000.0,
-    value=1.0,
-    step=1.0
-)
-
-capacitance_uf = st.sidebar.number_input(
-    "커패시터값 C (μF)",
-    min_value=0.001,
-    max_value=100000.0,
-    value=1.0,
-    step=1.0
-)
-
-input_voltage = st.sidebar.number_input(
-    "입력 전압 크기 (V)",
-    min_value=0.001,
-    max_value=100000.0,
-    value=5.0,
-    step=1.0
-)
-
-st.sidebar.divider()
-st.sidebar.subheader("주파수 분석")
-
-start_frequency = st.sidebar.number_input(
-    "분석 시작 주파수 (Hz)",
-    min_value=0.001,
-    max_value=1e9,
-    value=10.0,
-    step=1.0
-)
-
-end_frequency = st.sidebar.number_input(
-    "분석 종료 주파수 (Hz)",
-    min_value=0.002,
-    max_value=1e12,
-    value=100000.0,
-    step=1.0
-)
-
-number_of_points = st.sidebar.slider(
-    "그래프 계산 지점 수",
-    min_value=50,
-    max_value=1000,
-    value=300,
-    step=50
-)
-
-test_frequency = st.sidebar.number_input(
-    "별도로 확인할 주파수 (Hz)",
-    min_value=0.001,
-    max_value=1e12,
-    value=1000.0,
-    step=1.0
-)
-
-
-# ------------------------------------------------------------
-# 4. 계산 및 입력값 검증
-# ------------------------------------------------------------
-
-r_ohm = resistance_kohm * 1000.0
-c_f = capacitance_uf * 1e-6
-
-if end_frequency <= start_frequency:
-    st.error("종료 주파수는 시작 주파수보다 커야 합니다.")
-    st.stop()
-
-try:
-    fc = cutoff_frequency(r_ohm, c_f)
-
-    frequencies = np.logspace(
-        np.log10(start_frequency),
-        np.log10(end_frequency),
-        number_of_points
-    )
-
-    gain, gain_db, phase_deg = calculate_response(
-        filter_type,
-        frequencies,
-        r_ohm,
-        c_f
-    )
-
-    point_gain, point_gain_db, point_phase = calculate_response(
-        filter_type,
-        [test_frequency],
-        r_ohm,
-        c_f
-    )
-
-except ValueError as error:
-    st.error(f"계산 오류: {error}")
-    st.stop()
-
-
-# ------------------------------------------------------------
-# 4. 리스트와 반복문을 이용한 데이터 처리
-# ------------------------------------------------------------
-
-frequency_list = frequencies.tolist()
-gain_list = gain.tolist()
-gain_db_list = gain_db.tolist()
-phase_list = phase_deg.tolist()
-
-output_voltage_list = calculate_output_voltages(
-    input_voltage,
-    gain_list
-)
-
-
-# ------------------------------------------------------------
-# 4. 계산 결과
-# ------------------------------------------------------------
-
-st.subheader("📊 분석 결과")
-
-col1, col2, col3 = st.columns(3)
-
-col1.metric(
-    "차단 주파수",
-    f"{fc:,.2f} Hz"
-)
-
-col2.metric(
-    "전압 이득",
-    f"{float(point_gain[0]):.4f} 배"
-)
-
-col3.metric(
-    "위상차",
-    f"{float(point_phase[0]):.2f}°"
-)
-
-output_voltage = input_voltage * float(point_gain[0])
+st.success("저항값 계산 완료!")
 
 st.metric(
-    f"{test_frequency:,.2f} Hz에서의 출력 전압",
-    f"{output_voltage:.4f} V"
+    label="계산된 저항값",
+    value=format_resistance(resistance)
 )
 
-st.caption(
-    f"저항 = {r_ohm:,.2f} Ω  |  "
-    f"커패시터 = {c_f:.8g} F  |  "
-    f"입력 전압 = {input_voltage:g} V"
-)
-
-st.divider()
-
-
-# ------------------------------------------------------------
-# 4. 주파수 응답 그래프
-# ------------------------------------------------------------
-
-st.subheader("📈 주파수 응답 분석")
-
-graph_col1, graph_col2 = st.columns(2)
-
-# 전압 이득 그래프
-with graph_col1:
-    st.markdown("**① 주파수에 따른 전압 이득**")
-
-    fig1, ax1 = plt.subplots(
-        figsize=(5.2, 2.7),
-        dpi=100
-    )
-
-    ax1.semilogx(
-        frequency_list,
-        gain_db_list,
-        linewidth=1.8,
-        label="Gain"
-    )
-
-    ax1.xaxis.set_major_formatter(
-        FuncFormatter(
-            lambda value, position: f"{value:,.0f}"
-        )
-    )
-    ax1.xaxis.set_minor_formatter(NullFormatter())
-
-    ax1.axvline(
-        fc,
-        linestyle="--",
-        linewidth=1,
-        label="Cutoff"
-    )
-
-    ax1.axhline(
-        -3.0103,
-        linestyle=":",
-        linewidth=1,
-        label="-3.01 dB"
-    )
-
-    ax1.set_xlabel("Frequency (Hz)", fontsize=8)
-    ax1.set_ylabel("Gain (dB)", fontsize=8)
-    ax1.set_title(f"{filter_type} filter", fontsize=10)
-    ax1.tick_params(labelsize=7)
-    ax1.grid(True, which="both", alpha=0.25)
-    ax1.legend(fontsize=7, loc="best")
-
-    fig1.tight_layout()
-    st.pyplot(fig1, use_container_width=True)
-    plt.close(fig1)
-
-
-# 위상차 그래프
-with graph_col2:
-    st.markdown("**② 주파수에 따른 위상 변화**")
-
-    fig2, ax2 = plt.subplots(
-        figsize=(5.2, 2.7),
-        dpi=100
-    )
-
-    ax2.semilogx(
-        frequency_list,
-        phase_list,
-        linewidth=1.8,
-        label="Phase"
-    )
-
-    ax2.xaxis.set_major_formatter(
-        FuncFormatter(
-            lambda value, position: f"{value:,.0f}"
-        )
-    )
-    ax2.xaxis.set_minor_formatter(NullFormatter())
-
-    ax2.axvline(
-        fc,
-        linestyle="--",
-        linewidth=1,
-        label="Cutoff"
-    )
-
-    ax2.set_xlabel("Frequency (Hz)", fontsize=8)
-    ax2.set_ylabel("Phase (degrees)", fontsize=8)
-    ax2.set_title(f"{filter_type} filter", fontsize=10)
-    ax2.tick_params(labelsize=7)
-    ax2.grid(True, which="both", alpha=0.25)
-    ax2.legend(fontsize=7, loc="best")
-
-    fig2.tight_layout()
-    st.pyplot(fig2, use_container_width=True)
-    plt.close(fig2)
-
-
-st.divider()
-
-
-# ------------------------------------------------------------
-# 4. 계산 데이터 및 CSV 다운로드
-# ------------------------------------------------------------
-
-st.subheader("📋 계산 데이터")
-
-result_df = pd.DataFrame({
-    "주파수(Hz)": frequency_list,
-    "전압 이득(배)": gain_list,
-    "전압 이득(dB)": gain_db_list,
-    "위상차(도)": phase_list,
-    "출력 전압(V)": output_voltage_list
-})
-
-st.dataframe(
-    result_df,
-    use_container_width=True,
-    hide_index=True,
-    height=250
-)
-
-csv_data = result_df.to_csv(
-    index=False
-).encode("utf-8-sig")
-
-st.download_button(
-    "📥 분석 결과 CSV 다운로드",
-    data=csv_data,
-    file_name="rc_filter_analysis.csv",
-    mime="text/csv"
-)
-
-
-# ------------------------------------------------------------
-# 4. 설계 역산 기능
-# ------------------------------------------------------------
-
-st.divider()
-st.subheader("④ 설계 역산 기능")
+st.write(f"**허용 오차:** ±{tolerance}%")
 
 st.write(
-    "원하는 차단 주파수에 맞는 저항값을 계산합니다."
+    f"**최소 저항값:** {format_resistance(minimum)}"
 )
 
-target_fc = st.number_input(
-    "목표 차단 주파수 (Hz)",
-    min_value=0.001,
-    max_value=1e9,
-    value=1000.0,
-    step=1.0
+st.write(
+    f"**최대 저항값:** {format_resistance(maximum)}"
 )
 
-required_r = 1.0 / (2.0 * np.pi * target_fc * c_f)
+# 6색 띠일 경우 온도 계수 표시
+if band_count == 6:
 
-st.success(
-    f"현재 커패시터값 {capacitance_uf:g} μF를 유지한다면 "
-    f"필요한 저항은 {required_r:,.2f} Ω "
-    f"({required_r / 1000:.4f} kΩ) 입니다."
-)
+    temperature_color = selected_colors[5]
 
+    temperature_coefficient = temperature_data[temperature_color]
 
+    st.write(
+        f"**온도 계수:** {temperature_coefficient} ppm/℃"
+    )
 
-# ------------------------------------------------------------
-# 4. 하단 안내
-# ------------------------------------------------------------
+# ----------------------------------
+# 8. 계산 과정 출력
+# ----------------------------------
 
 st.divider()
+st.subheader("④ 계산 과정")
 
-st.caption(
-    "교육용 시뮬레이터입니다. 실제 회로 제작 전에는 "
-    "부품의 허용오차와 정격을 확인해야 합니다."
+st.write("**1. 숫자 띠 해석**")
+
+for i in range(digit_count):
+
+    color = selected_colors[i]
+
+    number = color_data[color]["digit"]
+
+    st.write(
+        f"{i + 1}번째 띠 ({color}) → {number}"
+    )
+
+st.write("**2. 배율 해석**")
+
+st.write(
+    f"{selected_colors[digit_count]} → ×{multiplier:g}"
 )
+
+st.write("**3. 저항값 계산**")
+
+st.latex(
+    f"{significant_value} \\times {multiplier:g}"
+    f" = {resistance:g}\\ \\Omega"
+)
+
+st.write("**4. 허용 오차 해석**")
+
+st.write(
+    f"{tolerance_color} → ±{tolerance}%"
+)
+
+st.info(
+    f"최종 결과: {format_resistance(resistance)} "
+    f"±{tolerance}%"
+)
+
+# ----------------------------------
+# 9. 색상별 참고 정보
+# ----------------------------------
+
+with st.expander("색상 띠별 의미 알아보기"):
+
+    st.write("**숫자 및 배율**")
+
+    for color, info in color_data.items():
+
+        st.write(
+            f"- {color}: 숫자 {info['digit'] if 'digit' in info else '-'}, "
+            f"배율 ×{info['multiplier']:g}"
+        )
+
+    st.write("**허용 오차**")
+
+    for color, value in tolerance_data.items():
+
+        st.write(f"- {color}: ±{value}%")
+
+    st.write("**온도 계수**")
+
+    for color, value in temperature_data.items():
+
+        st.write(f"- {color}: {value} ppm/℃")

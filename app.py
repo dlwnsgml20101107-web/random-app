@@ -93,90 +93,161 @@ st.caption(
     "6색 띠: 숫자 3개 + 배율 + 허용 오차 + 온도 계수"
 )
 
+
 # ----------------------------------
-# 5. 색상 띠 입력
+# 5. 화면 분할 및 색상 안내
 # ----------------------------------
 
-st.subheader("② 색상 띠 입력")
+left_col, right_col = st.columns([1.5, 1])
 
-digit_count = 2 if band_count == 4 else 3
+with left_col:
 
-digit_colors = list(color_data.keys())[:10]
+    st.subheader("② 색상 띠 입력")
 
-multiplier_colors = list(color_data.keys())
+    digit_count = 2 if band_count == 4 else 3
 
-tolerance_colors = list(tolerance_data.keys())
+    digit_colors = list(color_data.keys())[:10]
+    multiplier_colors = list(color_data.keys())
+    tolerance_colors = list(tolerance_data.keys())
+    temperature_colors = list(temperature_data.keys())
 
-temperature_colors = list(temperature_data.keys())
+    band_names = (
+        ["첫 번째 숫자", "두 번째 숫자"]
+        if band_count == 4
+        else ["첫 번째 숫자", "두 번째 숫자", "세 번째 숫자"]
+    )
 
-selected_colors = []
+    band_names += ["배율", "허용 오차"]
 
-# 색상 띠의 역할 설정
-band_names = (
-    ["첫 번째 숫자", "두 번째 숫자"]
-    if band_count == 4
-    else ["첫 번째 숫자", "두 번째 숫자", "세 번째 숫자"]
-)
+    if band_count == 6:
+        band_names += ["온도 계수"]
 
-band_names += ["배율", "허용 오차"]
+    default_colors = {
+        4: ["갈색", "검정색", "빨간색", "금색"],
+        5: ["갈색", "검정색", "검정색", "빨간색", "갈색"],
+        6: ["갈색", "검정색", "검정색", "빨간색", "갈색", "갈색"]
+    }
 
-if band_count == 6:
-    band_names += ["온도 계수"]
+    selected_colors = []
 
-# 기본 색상 설정
-default_colors = {
-    4: ["갈색", "검정색", "빨간색", "금색"],
-    5: ["갈색", "검정색", "검정색", "빨간색", "갈색"],
-    6: ["갈색", "검정색", "검정색", "빨간색", "갈색", "갈색"]
-}
+    for i in range(band_count):
 
-columns = st.columns(band_count)
-
-for i in range(band_count):
-
-    with columns[i]:
-
-        st.write(f"**{i + 1}번째 띠**")
-
-        # 위치에 따라 선택 가능한 색상 제한
         if i < digit_count:
             options = digit_colors
-
         elif i == digit_count:
             options = multiplier_colors
-
         elif i == digit_count + 1:
             options = tolerance_colors
-
         else:
             options = temperature_colors
 
-        default_color = default_colors[band_count][i]
-
         selected = st.selectbox(
-            band_names[i],
+            f"{i + 1}번째 띠 - {band_names[i]}",
             options,
-            index=options.index(default_color),
+            index=options.index(default_colors[band_count][i]),
             key=f"band_{band_count}_{i}"
         )
 
         selected_colors.append(selected)
 
-        # 선택된 색상을 화면에 표시
         hex_color = color_data[selected]["hex"]
 
         st.markdown(
             f"""
             <div style="
-                height: 45px;
+                width: 100%;
+                height: 18px;
                 background-color: {hex_color};
                 border: 1px solid #888;
-                border-radius: 5px;
-                margin-top: 5px;
+                border-radius: 4px;
+                margin-bottom: 8px;
             "></div>
             """,
             unsafe_allow_html=True
         )
+
+with right_col:
+
+    st.subheader("📖 색상 코드 안내")
+
+    with st.container(border=True):
+
+        st.markdown("**숫자를 나타내는 색상**")
+
+        for color, info in color_data.items():
+
+            if "digit" in info:
+
+                st.markdown(
+                    f"""
+                    <div style="
+                        display:flex;
+                        align-items:center;
+                        margin:5px 0;
+                        gap:10px;
+                    ">
+                        <div style="
+                            width:18px;
+                            height:18px;
+                            background:{info['hex']};
+                            border:1px solid #888;
+                            border-radius:3px;
+                        "></div>
+                        <span>{color}</span>
+                        <span style="margin-left:auto;">
+                            **{info['digit']}**
+                        </span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+    with st.container(border=True):
+
+        st.markdown("**배율을 나타내는 색상**")
+
+        for color, info in color_data.items():
+
+            st.write(
+                f"- {color}: ×{info['multiplier']:g}"
+            )
+
+    with st.container(border=True):
+
+        st.markdown("**허용 오차를 나타내는 색상**")
+
+        for color, value in tolerance_data.items():
+
+            st.write(f"- {color}: ±{value}%")
+
+    with st.container(border=True):
+
+        st.markdown("**온도 계수 (ppm/℃)**")
+
+        for color, value in temperature_data.items():
+
+            st.write(f"- {color}: {value}")
+
+    with st.container(border=True):
+
+        st.markdown("**색상 띠 위치별 의미**")
+
+        if band_count == 4:
+            st.write("1번째: 첫 번째 숫자")
+            st.write("2번째: 두 번째 숫자")
+            st.write("3번째: 배율")
+            st.write("4번째: 허용 오차")
+
+        elif band_count == 5:
+            st.write("1~3번째: 저항값 숫자")
+            st.write("4번째: 배율")
+            st.write("5번째: 허용 오차")
+
+        else:
+            st.write("1~3번째: 저항값 숫자")
+            st.write("4번째: 배율")
+            st.write("5번째: 허용 오차")
+            st.write("6번째: 온도 계수")
 
 # ----------------------------------
 # 6. 저항값 계산

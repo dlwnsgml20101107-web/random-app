@@ -2,20 +2,46 @@
 import streamlit as st
 
 # ----------------------------------
-# 1. 프로그램 기본 설정
+# 1. 기본 설정
 # ----------------------------------
 
 st.set_page_config(
     page_title="저항 색상 띠 계산기",
     page_icon="🔌",
-    layout="centered"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-st.title("🔌 저항 색상 띠 계산기")
-st.write("저항의 색상 띠를 선택하면 저항값을 자동으로 계산합니다.")
+st.markdown("""
+<style>
+    .block-container {
+        padding-top: 1.2rem;
+        padding-bottom: 0.5rem;
+        padding-left: 2rem;
+        padding-right: 2rem;
+        max-width: 100%;
+    }
+
+    h1 {
+        padding-bottom: 0.2rem;
+    }
+
+    [data-testid="stMetricValue"] {
+        font-size: 2rem;
+    }
+
+    [data-testid="stDataFrame"] {
+        font-size: 12px;
+    }
+
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border-radius: 10px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ----------------------------------
-# 2. 색상별 데이터 저장
+# 2. 색상 데이터
 # ----------------------------------
 
 color_data = {
@@ -33,7 +59,6 @@ color_data = {
     "은색": {"multiplier": 0.01, "hex": "#C0C0C0"}
 }
 
-# 허용 오차 (%)
 tolerance_data = {
     "갈색": 1,
     "빨간색": 2,
@@ -46,7 +71,6 @@ tolerance_data = {
     "없음": 20
 }
 
-# 온도 계수 (ppm/℃)
 temperature_data = {
     "검정색": 250,
     "갈색": 100,
@@ -59,58 +83,48 @@ temperature_data = {
     "회색": 1
 }
 
-# ----------------------------------
-# 3. 저항값 표시 함수
-# ----------------------------------
-
 def format_resistance(value):
-
-    if value >= 1000000:
-        return f"{value / 1000000:g} MΩ"
-
-    elif value >= 1000:
-        return f"{value / 1000:g} kΩ"
-
+    if value >= 1_000_000:
+        return f"{value / 1_000_000:g} MΩ"
+    elif value >= 1_000:
+        return f"{value / 1_000:g} kΩ"
     else:
         return f"{value:g} Ω"
 
+# ----------------------------------
+# 3. 제목
+# ----------------------------------
+
+st.title("🔌 저항 색상 띠 계산기")
+st.caption("Resistor Color Code Calculator  |  색상 띠를 선택하여 저항값과 허용 오차를 계산합니다.")
+
+st.divider()
 
 # ----------------------------------
-# 4. 저항 색상 띠 개수 선택
+# 4. 전체 화면 3개 영역
 # ----------------------------------
 
-st.subheader("① 저항 종류 선택")
-
-band_count = st.radio(
-    "색상 띠 개수",
-    [4, 5, 6],
-    horizontal=True
+input_col, result_col, guide_col = st.columns(
+    [1.15, 1.05, 1.2],
+    gap="large"
 )
 
-st.caption(
-    "4색 띠: 숫자 2개 + 배율 + 허용 오차\n\n"
-    "5색 띠: 숫자 3개 + 배율 + 허용 오차\n\n"
-    "6색 띠: 숫자 3개 + 배율 + 허용 오차 + 온도 계수"
-)
-
-
-
 # ----------------------------------
-# 5. 가로형 화면 구성 및 색상 안내
+# 5. 왼쪽 : 색상 입력
 # ----------------------------------
 
-left_col, right_col = st.columns([1.4, 1])
+with input_col:
 
-with left_col:
+    st.subheader("① 색상 띠 입력")
 
-    st.subheader("② 색상 띠 입력")
+    band_count = st.radio(
+        "저항 종류",
+        [4, 5, 6],
+        horizontal=True,
+        format_func=lambda x: f"{x}색 띠"
+    )
 
     digit_count = 2 if band_count == 4 else 3
-
-    digit_colors = list(color_data.keys())[:10]
-    multiplier_colors = list(color_data.keys())
-    tolerance_colors = list(tolerance_data.keys())
-    temperature_colors = list(temperature_data.keys())
 
     band_names = (
         ["첫 번째 숫자", "두 번째 숫자"]
@@ -131,69 +145,168 @@ with left_col:
 
     selected_colors = []
 
-    # 색상 띠 선택 영역을 가로로 배치
-    columns = st.columns(band_count)
-
     for i in range(band_count):
 
-        with columns[i]:
+        if i < digit_count:
+            options = list(color_data.keys())[:10]
+        elif i == digit_count:
+            options = list(color_data.keys())
+        elif i == digit_count + 1:
+            options = list(tolerance_data.keys())
+        else:
+            options = list(temperature_data.keys())
 
-            if i < digit_count:
-                options = digit_colors
-            elif i == digit_count:
-                options = multiplier_colors
-            elif i == digit_count + 1:
-                options = tolerance_colors
-            else:
-                options = temperature_colors
+        selected = st.selectbox(
+            f"{i+1}번째 띠 · {band_names[i]}",
+            options,
+            index=options.index(default_colors[band_count][i]),
+            key=f"color_{band_count}_{i}"
+        )
 
-            st.caption(f"{i + 1}번째 띠")
+        selected_colors.append(selected)
 
-            selected = st.selectbox(
-                band_names[i],
-                options,
-                index=options.index(default_colors[band_count][i]),
-                key=f"band_{band_count}_{i}"
-            )
+    st.markdown("**선택한 저항 색상**")
 
-            selected_colors.append(selected)
+    color_boxes = st.columns(band_count)
 
-            hex_color = color_data[selected]["hex"]
+    for i, col in enumerate(color_boxes):
+
+        with col:
+
+            color = selected_colors[i]
+            hex_color = color_data[color]["hex"]
 
             st.markdown(
                 f"""
                 <div style="
-                    height: 35px;
-                    background-color: {hex_color};
-                    border: 1px solid #888;
-                    border-radius: 5px;
-                    margin-top: 5px;
+                    height:65px;
+                    background-color:{hex_color};
+                    border:1px solid #888;
+                    border-radius:7px;
+                    margin-bottom:5px;
                 "></div>
+                <p style="text-align:center;font-size:12px;">
+                    {i+1}번째
+                </p>
                 """,
                 unsafe_allow_html=True
             )
 
-with right_col:
+# ----------------------------------
+# 6. 저항값 계산
+# ----------------------------------
 
-    st.subheader("📊 계산에 사용되는 정보")
+digits = ""
 
-    # 색상 띠의 역할
-    if band_count == 4:
-        role_text = "숫자 2개 + 배율 + 허용 오차"
-    elif band_count == 5:
-        role_text = "숫자 3개 + 배율 + 허용 오차"
-    else:
-        role_text = "숫자 3개 + 배율 + 허용 오차 + 온도 계수"
+for i in range(digit_count):
+    digits += str(color_data[selected_colors[i]]["digit"])
 
-    st.info(role_text)
+significant_value = int(digits)
 
-    st.markdown("**색상별 숫자 및 배율**")
+multiplier = color_data[
+    selected_colors[digit_count]
+]["multiplier"]
 
-    # 숫자 색상 표
+resistance = significant_value * multiplier
+
+tolerance_color = selected_colors[digit_count + 1]
+tolerance = tolerance_data[tolerance_color]
+
+minimum = resistance * (1 - tolerance / 100)
+maximum = resistance * (1 + tolerance / 100)
+
+# ----------------------------------
+# 7. 가운데 : 계산 결과
+# ----------------------------------
+
+with result_col:
+
+    st.subheader("② 계산 결과")
+
+    st.container(border=True)
+
+    with st.container(border=True):
+
+        st.caption("최종 저항값")
+
+        st.markdown(
+            f"""
+            <h1 style="color:#16A36A;font-size:38px;">
+                {format_resistance(resistance)}
+            </h1>
+            """,
+            unsafe_allow_html=True
+        )
+
+        st.write(f"허용 오차: **±{tolerance}%**")
+
+        st.divider()
+
+        st.caption("저항값 범위")
+
+        range_col1, range_col2 = st.columns(2)
+
+        with range_col1:
+            st.metric(
+                "최솟값",
+                format_resistance(minimum)
+            )
+
+        with range_col2:
+            st.metric(
+                "최댓값",
+                format_resistance(maximum)
+            )
+
+        if band_count == 6:
+
+            temperature_color = selected_colors[5]
+
+            coefficient = temperature_data[temperature_color]
+
+            st.divider()
+
+            st.write(
+                f"온도 계수: **{coefficient} ppm/℃**"
+            )
+
+    st.markdown("**③ 계산 과정**")
+
+    with st.container(border=True):
+
+        st.write(
+            f"숫자: **{digits}**"
+        )
+
+        st.write(
+            f"배율: **×{multiplier:g}**"
+        )
+
+        st.latex(
+            f"{significant_value} \\times {multiplier:g}"
+            f" = {resistance:g}\\ \\Omega"
+        )
+
+        st.write(
+            f"허용 오차: **±{tolerance}%**"
+        )
+
+# ----------------------------------
+# 8. 오른쪽 : 색상 코드 안내
+# ----------------------------------
+
+with guide_col:
+
+    st.subheader("④ 색상 코드 안내")
+
+    st.caption("색상별 숫자와 배율을 확인하세요.")
+
     digit_rows = []
 
     for color, info in color_data.items():
+
         if "digit" in info:
+
             digit_rows.append({
                 "색상": color,
                 "숫자": info["digit"],
@@ -204,37 +317,48 @@ with right_col:
         digit_rows,
         hide_index=True,
         use_container_width=True,
-        height=250
+        height=300
     )
 
-    st.markdown("**허용 오차 및 온도 계수**")
+    st.markdown("**허용 오차**")
 
-    tolerance_rows = []
-
-    for color, value in tolerance_data.items():
-        tolerance_rows.append({
-            "색상": color,
-            "허용 오차": f"±{value}%"
-        })
+    tolerance_rows = [
+        {"색상": color, "허용 오차": f"±{value}%"}
+        for color, value in tolerance_data.items()
+    ]
 
     st.dataframe(
         tolerance_rows,
         hide_index=True,
         use_container_width=True,
-        height=180
+        height=190
     )
 
+    if band_count == 6:
+
+        st.markdown("**온도 계수**")
+
+        temp_rows = [
+            {"색상": color, "계수": f"{value} ppm/℃"}
+            for color, value in temperature_data.items()
+        ]
+
+        st.dataframe(
+            temp_rows,
+            hide_index=True,
+            use_container_width=True,
+            height=150
+        )
+
 # ----------------------------------
-# 6. 색상 띠 위치별 역할 안내
+# 9. 하단 : 색상 띠 위치별 의미
 # ----------------------------------
 
 st.divider()
 
-st.subheader("📖 색상 띠 위치별 의미")
+st.subheader("⑤ 색상 띠 위치별 역할")
 
 if band_count == 4:
-
-    role_columns = st.columns(4)
 
     roles = [
         ("1번째 띠", "첫 번째 숫자"),
@@ -244,8 +368,6 @@ if band_count == 4:
     ]
 
 elif band_count == 5:
-
-    role_columns = st.columns(5)
 
     roles = [
         ("1번째 띠", "첫 번째 숫자"),
@@ -257,8 +379,6 @@ elif band_count == 5:
 
 else:
 
-    role_columns = st.columns(6)
-
     roles = [
         ("1번째 띠", "첫 번째 숫자"),
         ("2번째 띠", "두 번째 숫자"),
@@ -268,10 +388,13 @@ else:
         ("6번째 띠", "온도 계수")
     ]
 
-for col, (title, description) in zip(role_columns, roles):
+role_columns = st.columns(band_count)
+
+for col, (number, description) in zip(role_columns, roles):
 
     with col:
 
         with st.container(border=True):
-            st.caption(title)
+
+            st.caption(number)
             st.markdown(f"**{description}**")

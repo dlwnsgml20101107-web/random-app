@@ -290,13 +290,9 @@ with input_col:
 
             color = selected_colors[i]
 
-            # '없음'은 흰색으로 표시
             if color == "없음":
-
                 hex_color = "#FFFFFF"
-
             else:
-
                 hex_color = color_data[color]["hex"]
 
             st.markdown(
@@ -449,8 +445,8 @@ with result_col:
         if tolerance_color == "없음":
 
             st.caption(
-                "네 번째 또는 다섯 번째 띠가 없으면 "
-                "허용 오차는 ±20%로 적용됩니다."
+                "허용 오차 색상 띠가 없는 경우 "
+                "±20%를 적용합니다."
             )
 
 
@@ -523,56 +519,3 @@ with guide_col:
             use_container_width=True,
             height=150
         )
-
-
-# ==========================================
-# 10. 하단 : 색상 띠 위치별 의미
-# ==========================================
-
-st.divider()
-
-st.subheader("⑤ 색상 띠 위치별 역할")
-
-if band_count == 4:
-
-    roles = [
-        ("1번째 띠", "첫 번째 숫자"),
-        ("2번째 띠", "두 번째 숫자"),
-        ("3번째 띠", "배율"),
-        ("4번째 띠", "허용 오차")
-    ]
-
-elif band_count == 5:
-
-    roles = [
-        ("1번째 띠", "첫 번째 숫자"),
-        ("2번째 띠", "두 번째 숫자"),
-        ("3번째 띠", "세 번째 숫자"),
-        ("4번째 띠", "배율"),
-        ("5번째 띠", "허용 오차")
-    ]
-
-else:
-
-    roles = [
-        ("1번째 띠", "첫 번째 숫자"),
-        ("2번째 띠", "두 번째 숫자"),
-        ("3번째 띠", "세 번째 숫자"),
-        ("4번째 띠", "배율"),
-        ("5번째 띠", "허용 오차"),
-        ("6번째 띠", "온도 계수")
-    ]
-
-role_columns = st.columns(band_count)
-
-for col, (number, description) in zip(role_columns, roles):
-
-    with col:
-
-        with st.container(border=True):
-
-            st.caption(number)
-
-            st.markdown(
-                f"**{description}**"
-            )
